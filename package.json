@@ -1,0 +1,15 @@
+{
+	"name": "rentmojo-scrapper",
+	"description": "Web scrapper built using node.js",
+	"version": "1.0.0",
+	"author": {
+		"name": "Ketan Patil",
+		"email": "100.percent.ketan@gmail.com",
+		"url": "http://linkedin.com/in/ketansp"
+	},
+	"main": "server.js",
+	"dependencies": {
+		"express": "latest",
+		"cheerio": "latest"
+	}
+}
