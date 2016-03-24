@@ -6,3 +6,5 @@ Run server.js using node server
 $ node server.js
 ```
 All the links will be saved in file links.csv
+
+PS - By default, the script will scrape 'https://medium.com' website
