@@ -5,15 +5,26 @@
 var express = require('express');
 var app = express();
 var https = require('https');
-https.globalAgent.maxSockets = 5;
+//https.globalAgent.maxSockets = 5; //handled with custom logic
 
 var fs = require('fs');
 var cheerio = require('cheerio');
 
 
-var baseUrl = 'https://medium.com'; //enter your base url here
+var baseUrl = 'https://www.rentomojo.com'; //enter your base url here
 var internalUrlsToScrape = [];
 var extractedLinks = [];
+var connectionCount = 0,
+	globalConnectionLimit = 5;
+
+var options = {
+	headers: {
+		'User-Agent': 'Googlebot/2.1 (+http://www.google.com/bot.html)'
+	},
+	host: 'rentomojo.com',
+	//path: '/?_escaped_fragment_=',
+	method: 'GET'
+};
 
 
 Array.prototype.unique = function () {
@@ -23,7 +34,7 @@ Array.prototype.unique = function () {
 			prev.push(previous[cur]);
 			return prev;
 		}, []) : previous;
-	}, {});
+	}, []);
 };
 
 
@@ -35,7 +46,10 @@ function collectLinks($) {
 	var relativeLinks = $("a[href^='/']");
 	relativeLinks.each(function () {
 		extractedLinks.push(baseUrl + $(this).attr('href'));
-		internalUrlsToScrape.push(baseUrl + $(this).attr('href'));
+		if ($(this).attr('href') !== undefined) {
+			internalUrlsToScrape.push(baseUrl + $(this).attr('href'));
+		}
+
 	});
 
 	var absoluteLinks = $("a[href^='http']");
@@ -43,7 +57,9 @@ function collectLinks($) {
 		extractedLinks.push($(this).attr('href'));
 		//adding url belonging to the same host for crawling
 		if ($(this).attr('href').indexOf(baseUrl) == 0) {
-			internalUrlsToScrape.push($(this).attr('href'));
+			if ($(this).attr('href') !== undefined) {
+				internalUrlsToScrape.push($(this).attr('href'));
+			}
 		}
 	});
 
@@ -51,7 +67,7 @@ function collectLinks($) {
 	internalUrlsToScrape = internalUrlsToScrape.unique();
 
 	for (var i = originalStartPointForInternalUrls; i < internalUrlsToScrape.length; i++) {
-		crawlLink(internalUrlsToScrape[i]);
+		queueForCrawling(internalUrlsToScrape[i]);
 	}
 
 	var arrayToPrint = extractedLinks !== null && extractedLinks.length > 0 ? extractedLinks.slice(originalStartPointForExtractedLinks, extractedLinks.length) : [];
@@ -64,19 +80,27 @@ function collectLinks($) {
 }
 
 function crawlLink(url) {
-	var req = https.request(url, function (res) {
-		console.log('crawling url ' + url);
-		var output = '';
+	console.log('crawling url ' + url);
+	options.url = url;
+	connectionCount = connectionCount + 1;
+	var req = https.request(options, function (res) {
+		console.log(res.statusCode);
+		if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location !== undefined) {
+			crawlLink(res.headers.location);
+		} else {
+			var output = '';
 
-		res.on('data', function (chunk) {
-			output += chunk;
-		});
+			res.on('data', function (chunk) {
+				output += chunk;
+			});
 
-		res.on('end', function () {
-			var $ = cheerio.load(output);
-			collectLinks($);
+			res.on('end', function () {
+				connectionCount = connectionCount - 1;
+				var $ = cheerio.load(output);
+				collectLinks($);
+			});
+		}
 
-		});
 	});
 
 	req.on('error', function (err) {
@@ -84,6 +108,24 @@ function crawlLink(url) {
 	});
 
 	req.end();
+}
+
+function checkConnectionAvailablity() {
+	if (connectionCount < globalConnectionLimit) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+function queueForCrawling(url) {
+	if (checkConnectionAvailablity()) {
+		crawlLink(url);
+	} else {
+		setTimeout(function () {
+			queueForCrawling(url);
+		}, 500);
+	}
 }
 
 //start crawling the base url
